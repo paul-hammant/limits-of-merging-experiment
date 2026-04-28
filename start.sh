@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
-# start.sh — flatten any existing git state and seed solution/ with a single
-# starting commit (C1). Run this once after cloning to put the playground in
-# a known state.
+# start.sh — set up solution/ as a fresh git playground at C1.
 #
-# WARNING: this deletes BOTH the outer ./.git (if any) and ./solution/.git.
-# If you cloned this repo from GitHub to follow along, that means your clone
-# loses its remote — that's intentional, the playground is local-only.
+# The outer ./.git (the GitHub clone) is moved aside to ./.git.disabled so
+# the playground's commits don't accidentally land on your GitHub clone.
+# Restore it later with:  mv .git.disabled .git
+#
+# The inner ./solution/.git is deleted outright — it's recreated fresh here.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 SOL="$ROOT/solution"
 
-echo "==> Removing outer .git (if present) and inner solution/.git"
-rm -rf "$ROOT/.git" "$SOL/.git"
+if [ -d "$ROOT/.git" ]; then
+  if [ -e "$ROOT/.git.disabled" ]; then
+    echo "error: $ROOT/.git.disabled already exists — refusing to overwrite" >&2
+    echo "       (move or remove it, then re-run)" >&2
+    exit 1
+  fi
+  echo "==> Renaming outer $ROOT/.git -> $ROOT/.git.disabled"
+  echo "    (restore later with:  mv .git.disabled .git)"
+  mv "$ROOT/.git" "$ROOT/.git.disabled"
+fi
+
+if [ -d "$SOL/.git" ]; then
+  echo "==> Removing existing $SOL/.git"
+  rm -rf "$SOL/.git"
+fi
 
 echo "==> Initialising fresh repo inside solution/"
 cd "$SOL"
