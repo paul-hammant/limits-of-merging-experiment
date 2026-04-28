@@ -1,0 +1,10 @@
+source 'https://rubygems.org'
+gem 'sinatra'
+gem 'sqlite3'
+gem 'rackup'
+gem 'puma'
+
+group :test do
+  gem 'playwright-ruby-client'
+  gem 'minitest'
+end

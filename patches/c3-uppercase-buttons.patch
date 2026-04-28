@@ -1,0 +1,83 @@
+From 786b49f445447aceb561e15b4f54f4d9e39a6d58 Mon Sep 17 00:00:00 2001
+From: Paul Hammant <paul@hammant.org>
+Date: Mon, 27 Apr 2026 17:07:49 +0100
+Subject: [PATCH 3/4] C3: button text to UPPERCASE (NEW PERSON / EDIT / DELETE
+ / SAVE / CANCEL)
+
+---
+ app.rb             | 10 +++++-----
+ happy_path_test.rb |  8 ++++++--
+ 2 files changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/app.rb b/app.rb
+index f015a98..1a7390a 100644
+--- a/app.rb
++++ b/app.rb
+@@ -125,7 +125,7 @@ __END__
+ 
+ @@ index
+ <h1>People</h1>
+-<p><a class="button primary" href="/people/new">New person</a></p>
++<p><a class="button primary" href="/people/new">NEW PERSON</a></p>
+ <table>
+   <tr><th>First</th><th>Last</th><th>DOB</th><th>Hair</th><th></th></tr>
+   <% @people.each do |p| %>
+@@ -135,9 +135,9 @@ __END__
+       <td><%= h p['dob'] %></td>
+       <td><%= h p['hair_color'] %></td>
+       <td class="row-actions">
+-        <a class="button" href="/people/<%= p['id'] %>/edit">Edit</a>
++        <a class="button" href="/people/<%= p['id'] %>/edit">EDIT</a>
+         <form method="post" action="/people/<%= p['id'] %>/delete" onsubmit="return confirm('Delete <%= h p['first_name'] %>?')">
+-          <button type="submit">Delete</button>
++          <button type="submit">DELETE</button>
+         </form>
+       </td>
+     </tr>
+@@ -175,8 +175,8 @@ __END__
+     </select>
+   </div>
+   <p>
+-    <button class="primary" type="submit">Save</button>
+-    <a class="button" href="/people">Cancel</a>
++    <button class="primary" type="submit">SAVE</button>
++    <a class="button" href="/people">CANCEL</a>
+   </p>
+ </form>
+ 
+diff --git a/happy_path_test.rb b/happy_path_test.rb
+index c21cd0c..1b1a83a 100644
+--- a/happy_path_test.rb
++++ b/happy_path_test.rb
+@@ -57,6 +57,10 @@ class HappyPathTest < Minitest::Test
+         assert_equal 5, seeded, 'expected 5 seeded rows'
+         assert_includes page.content, 'Fred'
+         assert_includes page.content, 'Pebbles'
++        # Buttons are UPPERCASE.
++        assert_includes page.content, 'NEW PERSON'
++        assert_includes page.content, 'EDIT'
++        assert_includes page.content, 'DELETE'
+ 
+         # 2. New person — client-side validation: empty form.
+         page.goto("#{base}/people/new")
+@@ -99,7 +103,7 @@ class HappyPathTest < Minitest::Test
+ 
+         # 6. Edit Barney → Bernard.
+         barney_row = page.locator('tr', hasText: 'Barney')
+-        barney_row.locator('a.button', hasText: 'Edit').click
++        barney_row.locator('a.button', hasText: 'EDIT').click
+         page.wait_for_selector('#first_name')
+         page.fill('#first_name', 'Bernard')
+         page.click('button.primary[type=submit]')
+@@ -109,7 +113,7 @@ class HappyPathTest < Minitest::Test
+ 
+         # 7. Delete Pebbles (the confirm dialog auto-accepts via our handler).
+         pebbles_row = page.locator('tr', hasText: 'Pebbles')
+-        pebbles_row.locator('button', hasText: 'Delete').click
++        pebbles_row.locator('button', hasText: 'DELETE').click
+         page.wait_for_url("#{base}/people")
+         refute_includes page.content, 'Pebbles'
+         assert alerts.any? { |m| m.include?('Delete Pebbles?') },
+-- 
+2.39.5
+

@@ -1,0 +1,184 @@
+From 862d973e6545dc37730a14c8ce8798ceadee200e Mon Sep 17 00:00:00 2001
+From: Paul Hammant <paul@hammant.org>
+Date: Mon, 27 Apr 2026 17:07:03 +0100
+Subject: [PATCH 2/4] =?UTF-8?q?C2:=20add=20hair=5Fcolor=20(string)=20?=
+ =?UTF-8?q?=E2=80=94=20dropdown,=20JS=20validation,=20DB=20CHECK=20constra?=
+ =?UTF-8?q?int?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ app.rb             | 39 ++++++++++++++++++++++++++++-----------
+ happy_path_test.rb | 11 +++++++++--
+ 2 files changed, 37 insertions(+), 13 deletions(-)
+
+diff --git a/app.rb b/app.rb
+index 797f3c3..f015a98 100644
+--- a/app.rb
++++ b/app.rb
+@@ -8,24 +8,27 @@ require 'date'
+ # ---------- Data tier ----------
+ DB = SQLite3::Database.new(File.join(__dir__, 'people.db'))
+ DB.results_as_hash = true
++HAIR_COLORS = %w[black brown blonde red grey white].freeze
++
+ DB.execute <<~SQL
+   CREATE TABLE IF NOT EXISTS people (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     first_name TEXT    NOT NULL,
+     last_name  TEXT    NOT NULL,
+-    dob        TEXT    NOT NULL
++    dob        TEXT    NOT NULL,
++    hair_color TEXT    NOT NULL CHECK (hair_color IN ('black','brown','blonde','red','grey','white'))
+   );
+ SQL
+ 
+ if DB.get_first_value('SELECT COUNT(*) FROM people').zero?
+   # The Flintstones first aired in 1960, so we pretend the cast was born then.
+   [
+-    ['Fred',   'Flintstone', '1960-09-30'],
+-    ['Wilma',  'Flintstone', '1960-10-07'],
+-    ['Barney', 'Rubble',     '1960-11-04'],
+-    ['Betty',  'Rubble',     '1960-12-02'],
+-    ['Pebbles','Flintstone', '1963-02-22'],
+-  ].each { |row| DB.execute('INSERT INTO people (first_name,last_name,dob) VALUES (?,?,?)', row) }
++    ['Fred',   'Flintstone', '1960-09-30', 'black'],
++    ['Wilma',  'Flintstone', '1960-10-07', 'red'],
++    ['Barney', 'Rubble',     '1960-11-04', 'blonde'],
++    ['Betty',  'Rubble',     '1960-12-02', 'black'],
++    ['Pebbles','Flintstone', '1963-02-22', 'red'],
++  ].each { |row| DB.execute('INSERT INTO people (first_name,last_name,dob,hair_color) VALUES (?,?,?,?)', row) }
+ end
+ 
+ # ---------- Domain / service tier ----------
+@@ -34,8 +37,8 @@ module People
+ 
+   def all       = DB.execute('SELECT * FROM people ORDER BY id')
+   def find(id)  = DB.execute('SELECT * FROM people WHERE id=?', id).first
+-  def create(a) = DB.execute('INSERT INTO people (first_name,last_name,dob) VALUES (?,?,?)', [a[:first_name], a[:last_name], a[:dob]])
+-  def update(id, a) = DB.execute('UPDATE people SET first_name=?,last_name=?,dob=? WHERE id=?', [a[:first_name], a[:last_name], a[:dob], id])
++  def create(a) = DB.execute('INSERT INTO people (first_name,last_name,dob,hair_color) VALUES (?,?,?,?)', [a[:first_name], a[:last_name], a[:dob], a[:hair_color]])
++  def update(id, a) = DB.execute('UPDATE people SET first_name=?,last_name=?,dob=?,hair_color=? WHERE id=?', [a[:first_name], a[:last_name], a[:dob], a[:hair_color], id])
+   def delete(id) = DB.execute('DELETE FROM people WHERE id=?', id)
+ 
+   def validate(a)
+@@ -48,6 +51,7 @@ module People
+     rescue ArgumentError
+       errs << 'Date of birth is required and must be a valid date.'
+     end
++    errs << 'Hair color is required.' unless HAIR_COLORS.include?(a[:hair_color].to_s)
+     errs
+   end
+ end
+@@ -56,7 +60,7 @@ end
+ helpers do
+   def h(s) = Rack::Utils.escape_html(s.to_s)
+   def form_params
+-    { first_name: params[:first_name], last_name: params[:last_name], dob: params[:dob] }
++    { first_name: params[:first_name], last_name: params[:last_name], dob: params[:dob], hair_color: params[:hair_color] }
+   end
+ end
+ 
+@@ -123,12 +127,13 @@ __END__
+ <h1>People</h1>
+ <p><a class="button primary" href="/people/new">New person</a></p>
+ <table>
+-  <tr><th>First</th><th>Last</th><th>DOB</th><th></th></tr>
++  <tr><th>First</th><th>Last</th><th>DOB</th><th>Hair</th><th></th></tr>
+   <% @people.each do |p| %>
+     <tr>
+       <td><%= h p['first_name'] %></td>
+       <td><%= h p['last_name'] %></td>
+       <td><%= h p['dob'] %></td>
++      <td><%= h p['hair_color'] %></td>
+       <td class="row-actions">
+         <a class="button" href="/people/<%= p['id'] %>/edit">Edit</a>
+         <form method="post" action="/people/<%= p['id'] %>/delete" onsubmit="return confirm('Delete <%= h p['first_name'] %>?')">
+@@ -159,6 +164,16 @@ __END__
+     <label for="dob">Date of birth</label>
+     <input id="dob" name="dob" type="date" value="<%= h(@person['dob'] || @person[:dob]) %>">
+   </div>
++  <div class="field">
++    <label for="hair_color">Hair color</label>
++    <select id="hair_color" name="hair_color">
++      <option value="">— choose —</option>
++      <% %w[black brown blonde red grey white].each do |c| %>
++        <% sel = (c == (@person['hair_color'] || @person[:hair_color])) ? ' selected' : '' %>
++        <option value="<%= c %>"<%= sel %>><%= c.capitalize %></option>
++      <% end %>
++    </select>
++  </div>
+   <p>
+     <button class="primary" type="submit">Save</button>
+     <a class="button" href="/people">Cancel</a>
+@@ -174,12 +189,14 @@ __END__
+       var first = form.first_name.value.trim();
+       var last  = form.last_name.value.trim();
+       var dob   = form.dob.value;
++      var hair  = form.hair_color.value;
+       if (!first) errs.push('First name is required.');
+       if (!last)  errs.push('Last name is required.');
+       if (!dob)   errs.push('Date of birth is required.');
+       else if (new Date(dob) >= new Date(new Date().toDateString())) {
+         errs.push('Date of birth must be in the past.');
+       }
++      if (!hair) errs.push('Hair color is required.');
+       if (errs.length) {
+         e.preventDefault();
+         alert(errs.join('\n'));
+diff --git a/happy_path_test.rb b/happy_path_test.rb
+index 1a23961..c21cd0c 100644
+--- a/happy_path_test.rb
++++ b/happy_path_test.rb
+@@ -77,20 +77,24 @@ class HappyPathTest < Minitest::Test
+         # 4. Server-side validation — bypass JS by POSTing directly.
+         res = Net::HTTP.post_form(URI("#{base}/people"),
+                                   'first_name' => '', 'last_name' => '',
+-                                  'dob' => (Date.today + 30).to_s)
++                                  'dob' => (Date.today + 30).to_s,
++                                  'hair_color' => '')
+         assert_equal '200', res.code
+         assert_includes res.body, 'First name is required.'
+         assert_includes res.body, 'Last name is required.'
+         assert_includes res.body, 'must be in the past'
++        assert_includes res.body, 'Hair color is required.'
+ 
+         # 5. Successful create.
+         page.goto("#{base}/people/new")
+         page.fill('#first_name', 'Dino')
+         page.fill('#last_name',  'Pet')
+         page.fill('#dob', '1960-09-30')
++        page.select_option('#hair_color', value: 'brown')
+         page.click('button.primary[type=submit]')
+         page.wait_for_url("#{base}/people")
+         assert_includes page.content, 'Dino'
++        assert_includes page.content, 'brown'
+         assert_equal 6, page.locator('table tr').count - 1
+ 
+         # 6. Edit Barney → Bernard.
+@@ -121,6 +125,7 @@ class HappyPathTest < Minitest::Test
+         page.fill('#first_name', '')
+         page.fill('#last_name',  'NoFirst')
+         page.fill('#dob', '1960-01-01')
++        page.select_option('#hair_color', value: 'black')
+         # Bypass the JS guard so we exercise the server's rejection path.
+         page.evaluate("document.getElementById('personForm').noValidate = true;")
+         page.evaluate("document.getElementById('personForm').submit();")
+@@ -134,10 +139,12 @@ class HappyPathTest < Minitest::Test
+     # 9. DB-level assertion of final state.
+     db = SQLite3::Database.new(DB_PATH)
+     db.results_as_hash = true
+-    rows = db.execute('SELECT first_name, last_name FROM people ORDER BY id')
++    rows = db.execute('SELECT first_name, last_name, hair_color FROM people ORDER BY id')
+     names = rows.map { |r| "#{r['first_name']} #{r['last_name']}" }
+     assert_equal ['Fred Flintstone', 'Wilma Flintstone', 'Bernard Rubble',
+                   'Betty Rubble', 'Dino Pet'], names
++    hair = rows.map { |r| r['hair_color'] }
++    assert_equal ['black', 'red', 'blonde', 'black', 'brown'], hair
+   ensure
+     db&.close
+   end
+-- 
+2.39.5
+

@@ -1,0 +1,24 @@
+From e24b1b8030c93448d9c8a766316cfbb4836916f5 Mon Sep 17 00:00:00 2001
+From: Paul Hammant <paul@hammant.org>
+Date: Mon, 27 Apr 2026 17:29:36 +0100
+Subject: [PATCH] C5: add maintainer comment in header
+
+---
+ app.rb | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/app.rb b/app.rb
+index 56df80c..6a77ae1 100644
+--- a/app.rb
++++ b/app.rb
+@@ -1,6 +1,7 @@
+ # Person CRUD — single-file three-tier Sinatra app.
+ # Run:  bundle exec ruby app.rb   (or)   ruby app.rb
+ # Deps: sinatra, sqlite3
++# Maintainer: people-platform team. See /docs/runbooks/people for ops notes.
+ require 'sinatra'
+ require 'sqlite3'
+ require 'date'
+-- 
+2.39.5
+
