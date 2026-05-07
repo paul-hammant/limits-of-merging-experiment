@@ -45,6 +45,8 @@ git tag c4
 git am --quiet "$PATCHES/c5-maintainer-comment.patch"
 git tag c5
 
+T_START=$(date +%s.%N)
+
 echo "==> Cut release at C2, cherry-pick C4 then C3 (out of order)"
 git checkout -q -B release c2
 GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git cherry-pick --no-edit c4 >/dev/null
@@ -52,6 +54,8 @@ GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git cherry-pick --no-edit c3 >/dev/null
 
 echo "==> Sweep-merge main into release"
 GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git merge --no-edit main >/dev/null
+
+T_END=$(date +%s.%N)
 
 echo
 echo "=== release graph ==="
@@ -63,3 +67,5 @@ echo "release tip commit = $(git rev-parse release)"
 echo
 echo "diff release vs main:"
 git diff --stat release main || true
+echo
+echo "[scenario-only elapsed (cut + cherry-picks + sweep): $(awk -v s="$T_START" -v e="$T_END" 'BEGIN { printf "%.3f", e - s }')s]"
