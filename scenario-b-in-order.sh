@@ -15,6 +15,8 @@ export P4TICKETS="$ROOT/.p4tickets"
 
 cd "$WC"
 
+T_START=$(date +%s.%N)
+
 show_integrated() {
   local stage="$1"
   echo "    --- p4 integrated //depot/branches/release/... after $stage ---"
@@ -40,8 +42,12 @@ p4 resolve -am //depot/branches/release/... >/dev/null 2>&1 || true
 p4 submit -d "sweep merge //depot/trunk into //depot/branches/release" >/dev/null
 show_integrated "sweep merge"
 
+T_END=$(date +%s.%N)
+
 echo "=== /branches/release changes ==="
 p4 changes //depot/branches/release/...
 echo
 echo "=== diff //depot/trunk vs //depot/branches/release (should be empty) ==="
 p4 diff2 //depot/trunk/... //depot/branches/release/...
+echo
+echo "[scenario-only elapsed (excluding start.sh): $(awk -v s="$T_START" -v e="$T_END" 'BEGIN { printf "%.3f", e - s }')s]"
