@@ -13,6 +13,8 @@ URL="file://$ROOT/svn-repo"
 
 "$ROOT/start.sh" >/dev/null
 
+T_START=$(date +%s.%N)
+
 show_mergeinfo() {
   local stage="$1"
   echo "    --- svn:mergeinfo on /branches/release after $stage ---"
@@ -47,8 +49,12 @@ echo "==> Sweep-merge ^/trunk into release"
 svn update -q "$WC"
 show_mergeinfo "sweep merge"
 
+T_END=$(date +%s.%N)
+
 echo "=== /branches/release log ==="
 svn log -q "$URL/branches/release" | grep '^r' | sort -n
 echo
 echo "=== diff /trunk vs /branches/release (should be empty) ==="
 svn diff "$URL/trunk" "$URL/branches/release" || true
+echo
+echo "[scenario-only elapsed (excluding start.sh): $(awk -v s="$T_START" -v e="$T_END" 'BEGIN { printf "%.3f", e - s }')s]"
