@@ -1,1 +1,5 @@
 extra_blog.md
+*.mhtml
+p4-server/
+p4-wc/
+.p4tickets

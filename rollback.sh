@@ -1,27 +1,19 @@
 #!/usr/bin/env bash
-# rollback.sh — reset solution/.git back to a single C1 commit on main,
-# undoing whatever a scenario script left behind. Does NOT delete .git;
-# for that, use start.sh.
+# rollback.sh — stop the sandbox p4d and wipe the server + workspace dirs.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
-SOL="$ROOT/solution"
+SERVER="$ROOT/p4-server"
+WC="$ROOT/p4-wc"
 
-cd "$SOL"
-
-C1=$(git rev-list --max-parents=0 main 2>/dev/null | head -1 || true)
-if [ -z "$C1" ]; then
-  echo "error: no commits found — run ./start.sh first" >&2
-  exit 1
+# Try a graceful admin stop first (works because our sandbox has no security).
+if command -v p4 >/dev/null; then
+  P4PORT=localhost:1667 P4USER=test p4 admin stop 2>/dev/null || true
 fi
+# Belt-and-braces: kill anything still bound to our server dir.
+pkill -f "p4d -r $SERVER" 2>/dev/null || true
+sleep 0.3
 
-echo "==> Resetting solution to C1 ($C1)"
-git checkout -q -B main "$C1"
-git reset --hard -q "$C1"
-
-# Wipe scenario tags and the release branch.
-for t in c2 c3 c4 c5; do git tag -d "$t" >/dev/null 2>&1 || true; done
-git branch -D release >/dev/null 2>&1 || true
-
-echo "==> Done."
-git log --oneline
+rm -rf "$SERVER" "$WC" "$ROOT/.p4tickets"
+echo "Stopped p4d on 1667 and wiped $SERVER and $WC."
+echo "Run ./start.sh to rebuild."

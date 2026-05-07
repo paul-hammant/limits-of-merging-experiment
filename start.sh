@@ -1,43 +1,112 @@
 #!/usr/bin/env bash
-# start.sh — set up solution/ as a fresh git playground at C1.
+# start.sh — set up a local p4d server + workspace at the repo root for
+# the limits-of-merging experiment, with //depot/trunk holding C1-C5
+# and a //depot/branches/release branch cut from trunk@CL2.
 #
-# The outer ./.git (the GitHub clone) is moved aside to ./.git.disabled so
-# the playground's commits don't accidentally land on your GitHub clone.
-# Restore it later with:  mv .git.disabled .git
+# Changelist map (deterministic):
+#   CL1 = C1 (initial Person CRUD app)
+#   CL2 = C2 (add hair_color string)
+#   CL3 = C3 (UPPERCASE buttons)
+#   CL4 = C4 (hair_color INTEGER)
+#   CL5 = C5 (maintainer comment)
+#   CL6 = p4 populate //depot/trunk/...@2 -> //depot/branches/release/...
 #
-# The inner ./solution/.git is deleted outright — it's recreated fresh here.
+# Sandbox: runs p4d on port 1667 (not the default 1666) without SSL and
+# without security level set, so no passwords. Server lives in p4-server,
+# workspace in p4-wc; both are wiped on every run.
+#
+# Server-side primer: ../fast_perforce_setup/README.md
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
-SOL="$ROOT/solution"
+SERVER="$ROOT/p4-server"
+WC="$ROOT/p4-wc"
 
-if [ -d "$ROOT/.git" ]; then
-  if [ -e "$ROOT/.git.disabled" ]; then
-    echo "error: $ROOT/.git.disabled already exists — refusing to overwrite" >&2
-    echo "       (move or remove it, then re-run)" >&2
-    exit 1
-  fi
-  echo "==> Renaming outer $ROOT/.git -> $ROOT/.git.disabled"
-  echo "    (restore later with:  mv .git.disabled .git)"
-  mv "$ROOT/.git" "$ROOT/.git.disabled"
+export P4PORT="localhost:1667"
+export P4USER="test"
+export P4CLIENT="lom_test_client"
+# Keep tickets/config out of the user's home so this is fully self-contained.
+export P4TICKETS="$ROOT/.p4tickets"
+unset P4CONFIG 2>/dev/null || true
+
+if ! command -v p4 >/dev/null || ! command -v p4d >/dev/null; then
+  echo "error: p4/p4d not on PATH. See ../fast_perforce_setup/README.md" >&2
+  exit 1
 fi
 
-if [ -d "$SOL/.git" ]; then
-  echo "==> Removing existing $SOL/.git"
-  rm -rf "$SOL/.git"
+# Stop any p4d we previously launched on 1667.
+pkill -f "p4d -r $SERVER" 2>/dev/null || true
+sleep 0.3
+
+echo "==> Wiping $SERVER and $WC"
+rm -rf "$SERVER" "$WC"
+mkdir -p "$SERVER" "$WC"
+
+echo "==> Starting p4d (no SSL, no security) on $P4PORT"
+p4d -r "$SERVER" -p "$P4PORT" -L "$SERVER/log" -d >/dev/null 2>&1
+
+# Wait for the server to start listening.
+for _ in $(seq 1 30); do
+  if p4 info >/dev/null 2>&1; then break; fi
+  sleep 0.1
+done
+if ! p4 info >/dev/null 2>&1; then
+  echo "error: p4d failed to come up — see $SERVER/log" >&2
+  exit 1
 fi
 
-echo "==> Initialising fresh repo inside solution/"
-cd "$SOL"
+echo "==> Creating user '$P4USER' and client '$P4CLIENT'"
+p4 user -i -f >/dev/null <<EOF
+User: $P4USER
+Email: $P4USER@example.com
+FullName: Test User
+EOF
 
-export GIT_AUTHOR_NAME="Test"      GIT_AUTHOR_EMAIL="t@e"
-export GIT_COMMITTER_NAME="Test"   GIT_COMMITTER_EMAIL="t@e"
-export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z"
-export GIT_COMMITTER_DATE="2026-01-01T00:00:00Z"
+p4 client -i >/dev/null <<EOF
+Client: $P4CLIENT
+Owner: $P4USER
+Root: $WC
+View:
+	//depot/... //$P4CLIENT/...
+EOF
 
-git init -q -b main
-git add Gemfile app.rb happy_path_test.rb
-git -c commit.gpgsign=false commit -q -m "start"
+cd "$WC"
 
-echo "==> Done."
-git log --oneline
+echo "==> CL1: import C1 onto trunk"
+mkdir -p trunk
+cp "$ROOT/solution/Gemfile" "$ROOT/solution/app.rb" "$ROOT/solution/happy_path_test.rb" trunk/
+( cd trunk
+  p4 add Gemfile app.rb happy_path_test.rb >/dev/null
+  p4 submit -d "C1: initial Person CRUD app, seeded Flintstones, Playwright happy-path test" >/dev/null
+)
+
+apply_and_submit() {
+  local cl="$1" patchfile="$2" msg="$3"
+  echo "==> CL$cl: $msg"
+  ( cd "$WC/trunk"
+    p4 edit app.rb happy_path_test.rb >/dev/null
+    patch -p1 --silent < "$ROOT/patches/$patchfile"
+    p4 submit -d "$msg" >/dev/null
+  )
+}
+
+apply_and_submit 2 "c2-hair-color-string.patch" \
+  "C2: add hair_color (string) — dropdown, JS validation, DB CHECK constraint"
+apply_and_submit 3 "c3-uppercase-buttons.patch" \
+  "C3: button text to UPPERCASE (NEW PERSON / EDIT / DELETE / SAVE / CANCEL)"
+apply_and_submit 4 "c4-hair-color-int.patch" \
+  "C4: hair_color stored as INTEGER (1..6), dropdown values become ints"
+apply_and_submit 5 "c5-maintainer-comment.patch" \
+  "C5: add maintainer comment in header"
+
+echo "==> CL6: p4 populate //depot/trunk/...@2 -> //depot/branches/release/..."
+p4 populate -d "branch release at C2 (trunk@CL2)" \
+  //depot/trunk/...@2 //depot/branches/release/... >/dev/null
+
+p4 sync //depot/branches/release/... >/dev/null
+
+echo
+echo "=== changes ==="
+p4 changes -m 10
+echo
+echo "Done. Use ./scenario-a-out-of-order.sh or ./scenario-b-in-order.sh next."
