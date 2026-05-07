@@ -52,20 +52,51 @@ git tag c4
 git am --quiet "$PATCHES/c5-maintainer-comment.patch"
 git tag c5
 
+show_integration() {
+  local stage="$1"
+  echo "    --- merge nodes reachable from release after $stage ---"
+  local merges
+  merges=$(git log --merges --oneline release 2>/dev/null)
+  if [ -z "$merges" ]; then
+    echo "      (none yet)"
+  else
+    echo "$merges" | sed 's/^/      /'
+  fi
+  echo "    --- trunk-tag reachability from release ---"
+  for tag in c2 c3 c4 c5; do
+    if git merge-base --is-ancestor "$tag" release 2>/dev/null; then
+      printf "      %s: yes (in ancestry)\n" "$tag"
+    else
+      printf "      %s: no (cherry-picked → different SHA, or unmerged)\n" "$tag"
+    fi
+  done
+  echo
+}
+
 T_START=$(date +%s.%N)
 
-echo "==> Cut release at C1, cherry-pick C2, cherry-pick C4, block C3 (-s ours)"
+echo "==> Cut release at C1"
 git checkout -q -B release "$C1"
+
+echo "==> Cherry-pick C2 onto release"
 GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git cherry-pick --no-edit c2 >/dev/null
+show_integration "C2 cherry-pick"
+
+echo "==> Cherry-pick C4 onto release"
 GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git cherry-pick --no-edit c4 >/dev/null
+show_integration "C4 cherry-pick"
+
+echo "==> Block C3: git merge -s ours c3 (record, no diff applied)"
 # `-s ours` records c3 as a parent of release without applying any of c3's
 # diff. After this, c3 is in release's ancestry via the merge node, so the
 # next `git merge main` sees c3 as already integrated and skips it.
 GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git merge -s ours --no-edit \
   -m "block C3: merge -s ours (record without applying diff)" c3 >/dev/null
+show_integration "C3 -s ours block"
 
 echo "==> Sweep-merge main into release"
 GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git merge --no-edit main >/dev/null
+show_integration "sweep merge"
 
 T_END=$(date +%s.%N)
 
