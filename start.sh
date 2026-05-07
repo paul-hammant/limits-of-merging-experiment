@@ -15,7 +15,8 @@
 #   r4 = C3 (uppercase buttons)
 #   r5 = C4 (hair_color INTEGER)
 #   r6 = C5 (maintainer comment)
-#   r7 = svn copy /trunk@r3 -> /branches/release  ("branch from C2")
+#   r7 = svn copy /trunk@${BRANCH_FROM_REV:-3} -> /branches/release
+#        (default: branch from C2 (r3); scenario-c sets BRANCH_FROM_REV=2 to branch from C1)
 #
 # The scenario scripts call this first to guarantee a clean state.
 set -euo pipefail
@@ -83,8 +84,10 @@ apply_and_commit "r6: C5 — maintainer comment" \
   "c5-maintainer-comment.patch" \
   "C5: add maintainer comment in header"
 
-echo "==> r7: svn copy /trunk@r3 -> /branches/release  (branch from C2)"
-svn copy -q -r3 "$URL/trunk" "$URL/branches/release" -m "branch release at C2 (trunk@r3)"
+BRANCH_FROM_REV="${BRANCH_FROM_REV:-3}"
+echo "==> r7: svn copy /trunk@r${BRANCH_FROM_REV} -> /branches/release"
+svn copy -q -r"${BRANCH_FROM_REV}" "$URL/trunk" "$URL/branches/release" \
+  -m "branch release at trunk@r${BRANCH_FROM_REV}"
 svn update -q "$WC"
 
 echo
