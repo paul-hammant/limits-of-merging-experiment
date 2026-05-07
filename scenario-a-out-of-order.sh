@@ -1,65 +1,54 @@
 #!/usr/bin/env bash
-# Scenario A — release branch cherry-picks C4 BEFORE C3 (out of trunk order),
-# then trunk gets C5, then we sweep-merge main into release.
+# Scenario A — cherry-pick C4 (r5) onto release BEFORE C3 (r4),
+# then sweep-merge ^/trunk into release. Show svn:mergeinfo at each step.
 #
-# Demonstrates: even with cherry-picks landed in the "wrong" order on release,
-# once trunk is merged in the resulting tree converges to identical content.
-#
-# Usage:  ./scenario-a-out-of-order.sh
-# Prereq: run ./start.sh first to seed ./solution with the C1 commit.
-# Resets: hard-resets ./solution back to C1 before running.
+# Equivalent to git's scenario-a-out-of-order.sh but in SVN, where
+# svn:mergeinfo is recorded automatically on the branch root.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
-SOL="$ROOT/solution"
-PATCHES="$ROOT/patches"
-# C1 is whatever the start commit is on main right now. We don't hard-code
-# its SHA because start.sh recreates the playground freshly each time.
-C1=$(cd "$SOL" && git rev-list --max-parents=0 main 2>/dev/null | head -1)
-if [ -z "$C1" ]; then
-  echo "error: no commits in $SOL — run ./start.sh first" >&2
-  exit 1
-fi
+WC="$ROOT/svn-wc"
+REL="$WC/branches/release"
+URL="file://$ROOT/svn-repo"
 
-# Pin every input that feeds a SHA so re-runs are deterministic.
-export GIT_AUTHOR_NAME="Test"      GIT_AUTHOR_EMAIL="t@e"
-export GIT_COMMITTER_NAME="Test"   GIT_COMMITTER_EMAIL="t@e"
-export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z"
-export GIT_COMMITTER_DATE="2026-01-01T00:00:00Z"
+"$ROOT/start.sh" >/dev/null
 
-cd "$SOL"
+show_mergeinfo() {
+  local stage="$1"
+  echo "    --- svn:mergeinfo on /branches/release after $stage ---"
+  ( cd "$REL" && svn propget svn:mergeinfo . 2>/dev/null ) | sed 's/^/      /' \
+    || echo "      (none)"
+  echo
+}
 
-echo "==> Reset solution to C1"
-git checkout -q main 2>/dev/null || git checkout -q -B main "$C1"
-git reset --hard -q "$C1"
-git tag -d c2 c3 c4 c5 2>/dev/null || true
-git branch -D release 2>/dev/null || true
+echo "==> Cherry-pick C4 (trunk@r5) onto release"
+( cd "$REL"
+  svn merge -c5 ^/trunk .
+  svn commit -q -m "cherry-pick C4 from trunk@r5"
+)
+svn update -q "$WC"
+show_mergeinfo "C4 cherry-pick"
 
-echo "==> Build trunk: apply C2, C3, C4, C5"
-git am --quiet "$PATCHES/c2-hair-color-string.patch"
-git tag c2
-git am --quiet "$PATCHES/c3-uppercase-buttons.patch"
-git tag c3
-git am --quiet "$PATCHES/c4-hair-color-int.patch"
-git tag c4
-git am --quiet "$PATCHES/c5-maintainer-comment.patch"
-git tag c5
+echo "==> Cherry-pick C3 (trunk@r4) onto release"
+( cd "$REL"
+  svn merge -c4 ^/trunk .
+  svn commit -q -m "cherry-pick C3 from trunk@r4"
+)
+svn update -q "$WC"
+show_mergeinfo "C3 cherry-pick"
 
-echo "==> Cut release at C2, cherry-pick C4 then C3 (out of order)"
-git checkout -q -B release c2
-GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git cherry-pick --no-edit c4 >/dev/null
-GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git cherry-pick --no-edit c3 >/dev/null
+echo "==> Sweep-merge ^/trunk into release"
+( cd "$REL"
+  # SVN consults svn:mergeinfo and applies only eligible (un-merged) revisions.
+  # Should pull in only r6 (C5); r4 and r5 are already in mergeinfo.
+  svn merge ^/trunk .
+  svn commit -q -m "sweep merge ^/trunk into release"
+)
+svn update -q "$WC"
+show_mergeinfo "sweep merge"
 
-echo "==> Sweep-merge main into release"
-GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" git merge --no-edit main >/dev/null
-
+echo "=== /branches/release log ==="
+svn log -q "$URL/branches/release" | grep '^r' | sort -n
 echo
-echo "=== release graph ==="
-git log --oneline --graph --decorate -n 8
-echo
-echo "release tip tree   = $(git rev-parse release^{tree})"
-echo "main tip tree      = $(git rev-parse main^{tree})"
-echo "release tip commit = $(git rev-parse release)"
-echo
-echo "diff release vs main:"
-git diff --stat release main || true
+echo "=== diff /trunk vs /branches/release (should be empty) ==="
+svn diff "$URL/trunk" "$URL/branches/release" || true
