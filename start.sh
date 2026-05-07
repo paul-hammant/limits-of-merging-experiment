@@ -9,7 +9,8 @@
 #   CL3 = C3 (UPPERCASE buttons)
 #   CL4 = C4 (hair_color INTEGER)
 #   CL5 = C5 (maintainer comment)
-#   CL6 = p4 populate //depot/trunk/...@2 -> //depot/branches/release/...
+#   CL6 = p4 populate //depot/trunk/...@${BRANCH_FROM_CL:-2} -> //depot/branches/release/...
+#         (default: branch from C2 (CL2); scenario-c sets BRANCH_FROM_CL=1 to branch from C1)
 #
 # Sandbox: runs p4d on port 1667 (not the default 1666) without SSL and
 # without security level set, so no passwords. Server lives in p4-server,
@@ -99,9 +100,10 @@ apply_and_submit 4 "c4-hair-color-int.patch" \
 apply_and_submit 5 "c5-maintainer-comment.patch" \
   "C5: add maintainer comment in header"
 
-echo "==> CL6: p4 populate //depot/trunk/...@2 -> //depot/branches/release/..."
-p4 populate -d "branch release at C2 (trunk@CL2)" \
-  //depot/trunk/...@2 //depot/branches/release/... >/dev/null
+BRANCH_FROM_CL="${BRANCH_FROM_CL:-2}"
+echo "==> CL6: p4 populate //depot/trunk/...@${BRANCH_FROM_CL} -> //depot/branches/release/..."
+p4 populate -d "branch release at trunk@CL${BRANCH_FROM_CL}" \
+  //depot/trunk/...@"${BRANCH_FROM_CL}" //depot/branches/release/... >/dev/null
 
 p4 sync //depot/branches/release/... >/dev/null
 
